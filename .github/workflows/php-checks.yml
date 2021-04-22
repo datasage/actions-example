@@ -1,0 +1,102 @@
+name: PHP Checks
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  psalm:
+    name: Psalm
+    runs-on: ubuntu-latest
+    env:
+      extensions: pcntl, mbstring, intl, curl, apcu, pdo, mysqlnd
+      key: ext-cache-1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup cache environment
+        id: cache-env
+        uses: shivammathur/cache-extensions@v1
+        with:
+          php-version: 7.4
+          extensions: ${{ env.extensions }}
+          key: ${{ env.key }}
+
+      - name: Cache extensions
+        uses: actions/cache@v2.1.5
+        with:
+          path: ${{ steps.cache-env.outputs.dir }}
+          key: ${{ steps.cache-env.outputs.key }}
+          restore-keys: ${{ steps.cache-env.outputs.key }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 7.4
+          extensions: ${{ env.extensions }}
+          tools: composer
+          ini-values: opcache.enable_cli=1
+
+      - name: Install Dependencies
+        env:
+          COMPOSER_AUTH: ${{ secrets.COMPOSER_AUTH }}
+        run: composer install --prefer-dist --no-suggest --no-interaction
+
+      - name: Psalm
+        timeout-minutes: 10
+        run: ./vendor/bin/psalm --long-progress --show-info=false --output-format=github
+
+  test-php:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    env:
+      extensions: pcntl, mbstring, intl, curl, apcu, pdo, mysqlnd
+      key: ext-cache
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup cache environment
+        id: cache-env
+        uses: shivammathur/cache-extensions@v1
+        with:
+          php-version: 7.4
+          extensions: ${{ env.extensions }}
+          key: ${{ env.key }}
+
+      - name: Cache extensions
+        uses: actions/cache@v2.1.5
+        with:
+          path: ${{ steps.cache-env.outputs.dir }}
+          key: ${{ steps.cache-env.outputs.key }}
+          restore-keys: ${{ steps.cache-env.outputs.key }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-versions }}
+          extensions: ${{ env.extensions }}
+          ini-values: date.timezone=UTC, opcache.enable_cli=1
+          tools: composer
+          coverage: pcov
+
+      - name: Install Dependencies
+        run: composer install --prefer-dist --no-suggest --no-interaction --no-progress --quiet
+
+      - name: Setup problem matchers for PHPUnit
+        run: echo "::add-matcher::${{ runner.tool_cache }}/phpunit.json"
+
+      - name: PHPUnit
+        run: /vendor/bin/phpunit --coverage-clover=./coverage.xml
+
+      - name: Send coverage report to codeclimate
+        uses: paambaati/codeclimate-action@v2.7.5
+        if: ${{ always() && matrix.php-versions == '7.4' }} # Make sure this runs, even if the coverage is not complete.
+        with:
+          coverageCommand: echo "Ignore rerun"
+          coverageLocations: ./coverage.xml:clover
+        env:
+          CC_TEST_REPORTER_ID: ${{secrets.CC_TEST_REPORTER_ID}}
