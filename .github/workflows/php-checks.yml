@@ -94,7 +94,6 @@ jobs:
 
       - name: Send coverage report to codeclimate
         uses: paambaati/codeclimate-action@v2.7.5
-        if: ${{ always() && matrix.php-versions == '7.4' }} # Make sure this runs, even if the coverage is not complete.
         with:
           coverageCommand: echo "Ignore rerun"
           coverageLocations: ./coverage.xml:clover
